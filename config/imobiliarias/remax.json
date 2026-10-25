@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "base_url": "https://www.remax.com.br",
+  "search_path": "/listings",
+  "parameters": {
+    "location": "FreeText",
+    "transaction": "TransactionTypeUID"
+  },
+  "transactions": {
+    "comprar": "261",
+    "alugar": "262"
+  },
+  "fixed_parameters": {
+    "Country": "Brasil",
+    "CountryId": "55",
+    "ListingClass": "-1"
+  }
+}

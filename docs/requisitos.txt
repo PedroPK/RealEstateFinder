@@ -1,6 +1,36 @@
-1) Quero criar uma aplicação que vai primeiramente buscar sites de corretoras de imóveis com atuação no brasil, e depois algumas locais ( a cidade deve ser parametrizável).
+3) Vamos explorar alguns filtros importantes para nossas buscas.
 
-Uma vez identificados sites de imobiliárias, as URLs devem ser salvas em um arquivo de propriedades para que possamos usa-los posteriormente, sem a necessidade de novas buscas na Web.
+3.1) Metragem/áreas mínimas e máximas
+3.2) Preços mínimos e máximos
 
-Essa é a primeira funcionaldade que devemos implementar.
+3.3) Estado
+3.4) Cidade
 
+3.5) Tipo do Imóvel (ex: Apartamento, Casa, Studio, Terreno, etc)
+
+3.6) Quantidade de Quartos/Dormitórios
+3.7) Quantidade de Suítes
+3.8) Quantidade de Banheiros
+3.9) Quantidade de Vagas de Garagem/Estacionamento
+
+4) Caracteristicas de Lazer do imóvel/Apartamento
+4.1) Varanda Gourmet
+4.2) Água individualizada
+4.3) Gás individualizado
+4.4) Área Pet
+4.5) Acessibilidade para cadeira de rodas
+4.6) Mobiliado
+4.7) Quarto/dependência  de serviço
+4.8) Dispensa de Feira/Mantimentos
+
+5) Áreas de Lazer do Condomínio
+5.1) Playground/Parquinho
+5.2) Brinquedoteca
+5.3) Jardim e/ou Área Verde
+5.4) Piscina
+5.5) Academia
+5.6) Salão de Festa
+5.7) Churrasqueira
+5.8) Área Gourmet
+5.9) Área de brasil
+5.10) Campinho / Quadra de Esportes
