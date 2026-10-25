@@ -32,5 +32,5 @@
 5.6) Salão de Festa
 5.7) Churrasqueira
 5.8) Área Gourmet
-5.9) Área de brasil
+5.9) Área de Bar
 5.10) Campinho / Quadra de Esportes

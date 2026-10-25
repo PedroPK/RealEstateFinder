@@ -25,33 +25,76 @@ def main() -> None:
         "--localidade",
         help="Cidade, bairro ou termo de busca para --buscar-remax",
     )
+    parser.add_argument("--estado", help="Estado para --buscar-remax")
+    parser.add_argument("--cidade-imovel", help="Cidade para --buscar-remax")
     parser.add_argument(
         "--finalidade",
         choices=[transaction.value for transaction in TransactionType],
         default=TransactionType.BUY.value,
         help="Finalidade para --buscar-remax (padrão: comprar)",
     )
+    parser.add_argument("--preco-minimo", type=float, help="Preço mínimo para --buscar-remax")
+    parser.add_argument("--preco-maximo", type=float, help="Preço máximo para --buscar-remax")
+    parser.add_argument("--area-minima", type=float, help="Área mínima em m² para --buscar-remax")
+    parser.add_argument("--area-maxima", type=float, help="Área máxima em m² para --buscar-remax")
+    parser.add_argument("--quartos", type=int, help="Quantidade mínima de dormitórios")
+    parser.add_argument("--banheiros", type=int, help="Quantidade mínima de banheiros")
+    parser.add_argument("--vagas", type=int, help="Quantidade mínima de vagas")
+    parser.add_argument(
+        "--tipo-imovel",
+        action="append",
+        default=[],
+        help="Tipo de imóvel mapeado na RE/MAX; pode ser repetido",
+    )
+    parser.add_argument(
+        "--caracteristica",
+        action="append",
+        default=[],
+        help="Característica mapeada na RE/MAX; pode ser repetida",
+    )
     args = parser.parse_args()
 
     if args.buscar_remax:
-        if not args.localidade:
-            parser.error("--buscar-remax exige --localidade")
         if args.cidade:
             parser.error("--cidade não pode ser usada junto com --buscar-remax")
         try:
             criteria = SearchCriteria(
                 location=args.localidade,
                 transaction=TransactionType(args.finalidade),
+                state=args.estado,
+                city=args.cidade_imovel,
+                min_price=args.preco_minimo,
+                max_price=args.preco_maximo,
+                min_area=args.area_minima,
+                max_area=args.area_maxima,
+                bedrooms=args.quartos,
+                bathrooms=args.banheiros,
+                parking_spaces=args.vagas,
+                property_types=tuple(args.tipo_imovel),
+                property_features=tuple(args.caracteristica),
             )
+            url = build_search_url(criteria)
         except ValueError as exc:
             parser.error(str(exc))
-        print(build_search_url(criteria))
+        print(url)
         return
 
-    if args.localidade:
-        parser.error("--localidade só pode ser usada com --buscar-remax")
-    if args.finalidade != TransactionType.BUY.value:
-        parser.error("--finalidade só pode ser usada com --buscar-remax")
+    remax_only_options = (
+        args.localidade,
+        args.estado,
+        args.cidade_imovel,
+        args.preco_minimo,
+        args.preco_maximo,
+        args.area_minima,
+        args.area_maxima,
+        args.quartos,
+        args.banheiros,
+        args.vagas,
+        args.tipo_imovel,
+        args.caracteristica,
+    )
+    if any(remax_only_options) or args.finalidade != TransactionType.BUY.value:
+        parser.error("Os filtros de imóveis só podem ser usados com --buscar-remax")
 
     path = Path(args.arquivo)
     groups = storage.load(path)

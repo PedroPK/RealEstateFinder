@@ -23,6 +23,9 @@ class ReMaxConfig:
     transaction_parameter: str
     transactions: dict[str, str]
     fixed_parameters: dict[str, str]
+    optional_parameters: dict[str, str]
+    property_types: dict[str, str]
+    property_features: dict[str, str]
 
 
 def _string(value: Any, field: str) -> str:
@@ -36,6 +39,22 @@ def _string_mapping(value: Any, field: str) -> dict[str, str]:
         raise ValueError(f"Configuração inválida: '{field}' deve ser um objeto não vazio.")
     if any(not isinstance(key, str) or not isinstance(item, str) for key, item in value.items()):
         raise ValueError(f"Configuração inválida: '{field}' deve conter apenas textos.")
+    return value
+
+
+def _optional_string_mapping(value: Any, field: str) -> dict[str, str]:
+    if value is None:
+        return {}
+    if not isinstance(value, dict):
+        raise ValueError(f"Configuração inválida: '{field}' deve ser um objeto.")
+    if any(
+        not isinstance(key, str)
+        or not key
+        or not isinstance(item, str)
+        or not item
+        for key, item in value.items()
+    ):
+        raise ValueError(f"Configuração inválida: '{field}' deve conter textos não vazios.")
     return value
 
 
@@ -66,8 +85,22 @@ def load_config(path: Path = DEFAULT_CONFIG_PATH) -> ReMaxConfig:
     transaction_parameter = _string(parameters.get("transaction"), "parameters.transaction")
     transactions = _string_mapping(data.get("transactions"), "transactions")
     fixed_parameters = _string_mapping(data.get("fixed_parameters"), "fixed_parameters")
+    optional_parameters = _optional_string_mapping(
+        data.get("optional_parameters"), "optional_parameters"
+    )
+    property_types = _optional_string_mapping(data.get("property_types"), "property_types")
+    property_features = _optional_string_mapping(
+        data.get("property_features"), "property_features"
+    )
     reserved = {location_parameter, transaction_parameter}
-    if len(reserved) != 2 or reserved.intersection(fixed_parameters):
+    mapped_parameters = set(optional_parameters.values())
+    if (
+        len(reserved) != 2
+        or reserved.intersection(fixed_parameters)
+        or reserved.intersection(mapped_parameters)
+        or fixed_parameters.keys() & mapped_parameters
+        or len(mapped_parameters) != len(optional_parameters)
+    ):
         raise ValueError("Configuração RE/MAX inválida: parâmetros de busca duplicados.")
     if not {"comprar", "alugar"}.issubset(transactions):
         raise ValueError("Configuração RE/MAX inválida: faltam finalidades suportadas.")
@@ -79,7 +112,24 @@ def load_config(path: Path = DEFAULT_CONFIG_PATH) -> ReMaxConfig:
         transaction_parameter=transaction_parameter,
         transactions=transactions,
         fixed_parameters=fixed_parameters,
+        optional_parameters=optional_parameters,
+        property_types=property_types,
+        property_features=property_features,
     )
+
+
+def _mapped_values(
+    values: tuple[str, ...],
+    mapping: dict[str, str],
+    field: str,
+) -> str:
+    unsupported = [value for value in values if value not in mapping]
+    if unsupported:
+        raise ValueError(
+            f"Filtro(s) não suportado(s) pela RE/MAX em '{field}': "
+            f"{', '.join(unsupported)}."
+        )
+    return ",".join(mapping[value] for value in values)
 
 
 def build_search_url(
@@ -93,9 +143,38 @@ def build_search_url(
             f"A finalidade '{criteria.transaction.value}' não está configurada para a RE/MAX."
         )
 
-    query = {
-        config.location_parameter: criteria.location,
-        **config.fixed_parameters,
-        config.transaction_parameter: config.transactions[criteria.transaction.value],
+    query: dict[str, str] = {}
+    if criteria.location is not None:
+        query[config.location_parameter] = criteria.location
+    query.update(config.fixed_parameters)
+    query[config.transaction_parameter] = config.transactions[criteria.transaction.value]
+
+    optional_values: dict[str, str | int | float | None] = {
+        "state": criteria.state,
+        "city": criteria.city,
+        "min_price": criteria.min_price,
+        "max_price": criteria.max_price,
+        "min_area": criteria.min_area,
+        "max_area": criteria.max_area,
+        "bedrooms": criteria.bedrooms,
+        "bathrooms": criteria.bathrooms,
+        "parking_spaces": criteria.parking_spaces,
     }
+    for field, value in optional_values.items():
+        if value is not None:
+            parameter = config.optional_parameters.get(field)
+            if parameter is None:
+                raise ValueError(f"O filtro '{field}' não está configurado para a RE/MAX.")
+            query[parameter] = str(value)
+
+    for field, values, mapping in (
+        ("property_types", criteria.property_types, config.property_types),
+        ("property_features", criteria.property_features, config.property_features),
+    ):
+        if values:
+            parameter = config.optional_parameters.get(field)
+            if parameter is None:
+                raise ValueError(f"O filtro '{field}' não está configurado para a RE/MAX.")
+            query[parameter] = _mapped_values(values, mapping, field)
+
     return f"{config.base_url}{config.search_path}?{urlencode(query)}"
