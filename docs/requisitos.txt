@@ -1,0 +1,6 @@
+1) Quero criar uma aplicação que vai primeiramente buscar sites de corretoras de imóveis com atuação no brasil, e depois algumas locais ( a cidade deve ser parametrizável).
+
+Uma vez identificados sites de imobiliárias, as URLs devem ser salvas em um arquivo de propriedades para que possamos usa-los posteriormente, sem a necessidade de novas buscas na Web.
+
+Essa é a primeira funcionaldade que devemos implementar.
+
