@@ -21,6 +21,7 @@ class SearchCriteria:
     min_area: int | float | None = None
     max_area: int | float | None = None
     bedrooms: int | None = None
+    suites: int | None = None
     bathrooms: int | None = None
     parking_spaces: int | None = None
     property_types: tuple[str, ...] = ()
@@ -59,7 +60,7 @@ class SearchCriteria:
             if lower is not None and upper is not None and lower > upper:
                 raise ValueError(f"'{minimum}' não pode ser maior que '{maximum}'.")
 
-        for field in ("bedrooms", "bathrooms", "parking_spaces"):
+        for field in ("bedrooms", "suites", "bathrooms", "parking_spaces"):
             value = getattr(self, field)
             if value is not None and (
                 isinstance(value, bool) or not isinstance(value, int) or value < 0
