@@ -1,6 +1,8 @@
 import argparse
+import logging
+import os
+import time
 from pathlib import Path
-import sys
 
 from . import classifier, search, storage
 from .connectors.sites import (
@@ -10,9 +12,29 @@ from .connectors.sites import (
     unsupported_filters,
 )
 from .models import SearchCriteria, TransactionType
+from .observability import DEFAULT_LOG_FILE, metrics, setup_logging, timed
+
+logger = logging.getLogger("realestatefinder.cli")
 
 
 def main() -> None:
+    start = time.perf_counter()
+    status = "erro"
+    try:
+        _run()
+        status = "sucesso"
+    except SystemExit as exc:
+        status = "sucesso" if exc.code in (None, 0) else f"saída {exc.code}"
+        raise
+    except BaseException:
+        logger.exception("execução abortada por exceção não tratada")
+        raise
+    finally:
+        logger.info("execução finalizada (%s) em %.3fs", status, time.perf_counter() - start)
+        metrics.log_summary()
+
+
+def _run() -> None:
     parser = argparse.ArgumentParser(
         prog="realestatefinder",
         description="Busca sites de imobiliárias ou monta buscas de imóveis.",
@@ -64,7 +86,22 @@ def main() -> None:
         default=[],
         help="Característica mapeada para o site; pode ser repetida",
     )
+    parser.add_argument(
+        "--log-nivel",
+        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
+        default=os.environ.get("REALESTATEFINDER_LOG_LEVEL", "INFO").upper(),
+        help="Nível de log no console (stderr); o arquivo sempre registra DEBUG (padrão: INFO)",
+    )
+    parser.add_argument(
+        "--log-arquivo",
+        default=os.environ.get("REALESTATEFINDER_LOG_FILE", str(DEFAULT_LOG_FILE)),
+        help=f"Arquivo de log rotativo (padrão: {DEFAULT_LOG_FILE})",
+    )
+    parser.add_argument("--sem-log-arquivo", action="store_true",
+                        help="Não grava o arquivo de log")
     args = parser.parse_args()
+    setup_logging(args.log_nivel, None if args.sem_log_arquivo else args.log_arquivo)
+    logger.info("execução iniciada; argumentos: %s", vars(args))
 
     if args.buscar_site:
         if args.cidade:
@@ -105,6 +142,7 @@ def main() -> None:
                 print(
                     f"Aviso [{SITE_LABELS[site]}]: filtros ignorados: {', '.join(ignored)}."
                 )
+                logger.warning("filtros ignorados em %s: %s", site, ", ".join(ignored))
         return
 
     property_search_options = (
@@ -140,20 +178,23 @@ def main() -> None:
 
     if args.revisar_arquivo:
         print(f"Revisando {path}...")
-        groups = {group: keep_search_sites(urls) for group, urls in groups.items()}
+        with timed("fluxo.revisar", logger):
+            groups = {group: keep_search_sites(urls) for group, urls in groups.items()}
         storage.save(path, groups)
         print(f"URLs salvas em {path}")
         return
 
     if not args.pular_nacionais:
         print("Buscando imobiliárias nacionais...")
-        found = keep_search_sites(search.search_national())
+        with timed("fluxo.nacionais", logger):
+            found = keep_search_sites(search.search_national())
         groups["nacional"] = storage.merge(groups.get("nacional", []), found)
         print(f"  {len(found)} sites encontrados.")
 
     if args.cidade:
         print(f"Buscando imobiliárias em {args.cidade}...")
-        found = keep_search_sites(search.search_local(args.cidade))
+        with timed("fluxo.locais", logger, cidade=args.cidade):
+            found = keep_search_sites(search.search_local(args.cidade))
         key = f"local.{storage.city_key(args.cidade)}"
         groups[key] = storage.merge(groups.get(key, []), found)
         print(f"  {len(found)} sites encontrados.")

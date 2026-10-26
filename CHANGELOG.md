@@ -9,6 +9,7 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
 - A RE/MAX foi unificada ao `sites.json` e ao motor genérico, que ganhou parâmetros fixos, texto livre, vários tipos de imóvel e características mapeadas. A RE/MAX agora participa de `--buscar-site todos`. Valores sem mapeamento (por exemplo, características) passaram a ser omitidos com aviso em vez de gerar erro, e `suites` aparece no aviso padrão de filtros ignorados.
 
 ### Adicionado
+- Logs de execução e métricas (`realestatefinder/observability.py`): log no console (stderr, nível configurável) e em arquivo rotativo `logs/realestatefinder.log` (sempre em DEBUG), com argumentos da execução, duração de consultas, downloads, classificação, geração de URLs e leitura/gravação do `.properties`, falhas com contexto e um resumo final de contadores e tempos (n, total, média, máx). Novas opções `--log-nivel`, `--log-arquivo`, `--sem-log-arquivo` e variáveis `REALESTATEFINDER_LOG_LEVEL`/`REALESTATEFINDER_LOG_FILE`.
 - Classificador de sites (`realestatefinder/classifier.py`): a descoberta agora descarta sites que não permitem buscar imóveis (diretórios, blogs, associações, software, franquias e notícias) e mantém os não verificáveis; opções `--manter-sem-busca` e `--revisar-arquivo`.
 - Consultas de descoberta voltadas a portais e anúncios de imóveis.
 

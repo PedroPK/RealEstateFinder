@@ -1,9 +1,14 @@
 """Busca de sites de imobiliárias via DuckDuckGo (HTML, sem chave de API)."""
+import logging
 import re
 import time
 import urllib.parse
 import urllib.request
 from html.parser import HTMLParser
+
+from .observability import metrics, timed
+
+logger = logging.getLogger(__name__)
 
 SEARCH_URL = "https://html.duckduckgo.com/html/"
 USER_AGENT = "Mozilla/5.0 (compatible; RealEstateFinder/0.1)"
@@ -71,16 +76,19 @@ def _is_ignored(host: str) -> bool:
 def _fetch(query: str, timeout: int = 20) -> list[str]:
     data = urllib.parse.urlencode({"q": query, "kl": "br-pt"}).encode()
     req = urllib.request.Request(SEARCH_URL, data=data, headers={"User-Agent": USER_AGENT})
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
-        html = resp.read().decode("utf-8", errors="replace")
+    with timed("search.consulta", logger, consulta=repr(query)):
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            html = resp.read().decode("utf-8", errors="replace")
     parser = _ResultParser()
     parser.feed(html)
+    logger.debug("consulta %r: %d bytes, %d links", query, len(html), len(parser.urls))
     return parser.urls
 
 
 def search_sites(queries: list[str], delay: float = 2.0) -> list[str]:
     """Executa as consultas e retorna a URL raiz de cada site candidato, sem duplicatas."""
     found: dict[str, str] = {}
+    logger.info("descoberta iniciada com %d consultas", len(queries))
     for i, query in enumerate(queries):
         if i:
             time.sleep(delay)
@@ -88,13 +96,20 @@ def search_sites(queries: list[str], delay: float = 2.0) -> list[str]:
             urls = _fetch(query)
         except OSError as exc:
             print(f"Aviso: falha na consulta '{query}': {exc}")
+            logger.warning("falha na consulta %r: %s", query, exc)
+            metrics.incr("search.consultas_falhas")
             continue
+        metrics.incr("search.consultas_ok")
         for url in urls:
             parsed = urllib.parse.urlparse(url)
             host = _base_domain(parsed.hostname or "")
             if not host or _is_ignored(host) or not re.search(r"\.[a-z]{2,}$", host):
+                logger.debug("domínio ignorado: %s", host or url)
+                metrics.incr("search.dominios_ignorados")
                 continue
             found.setdefault(host, f"{parsed.scheme}://{parsed.netloc}/")
+    logger.info("descoberta concluída: %d sites candidatos", len(found))
+    metrics.incr("search.sites_candidatos", len(found))
     return list(found.values())
 
 

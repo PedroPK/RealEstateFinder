@@ -4,6 +4,7 @@ O mapeamento de cada site fica em config/imobiliarias/sites.json; este módulo
 é apenas o motor genérico que o interpreta.
 """
 import json
+import logging
 import os
 import re
 import unicodedata
@@ -14,6 +15,9 @@ from typing import Any
 from urllib.parse import urlencode
 
 from ..models import SearchCriteria
+from ..observability import metrics, timed
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_SITES_CONFIG_PATH = (
     Path(__file__).resolve().parents[2] / "config" / "imobiliarias" / "sites.json"
@@ -245,6 +249,18 @@ def _provided(criteria: SearchCriteria, name: str) -> bool:
 
 def build_site_search_url(criteria: SearchCriteria, site: str) -> str:
     """Gera URL de pesquisa para um dos sites com mapeamento confirmado."""
+    try:
+        with timed("sites.gerar_url", logger, site=site):
+            url = _build_site_search_url(criteria, site)
+    except ValueError as exc:
+        logger.warning("URL não gerada para %s: %s", site, exc)
+        raise
+    metrics.incr("sites.urls_geradas")
+    logger.debug("URL gerada para %s: %s", site, url)
+    return url
+
+
+def _build_site_search_url(criteria: SearchCriteria, site: str) -> str:
     if site not in _SITES:
         raise ValueError(f"Site sem mapeamento de busca: '{site}'.")
     config = _SITES[site]

@@ -45,7 +45,18 @@ nacional.1=https://exemplo.com.br/
 local.sao_paulo.1=https://outra.com.br/
 ```
 
+## Logs e métricas
+
+Cada execução gera logs para depuração e diagnóstico:
+
+- **Console (stderr)**: nível `INFO` por padrão; altere com `--log-nivel DEBUG|INFO|WARNING|ERROR` ou `REALESTATEFINDER_LOG_LEVEL`. A saída normal (stdout) não muda.
+- **Arquivo**: `logs/realestatefinder.log` (rotativo, 1 MB × 3 backups), sempre em `DEBUG`. Use `--log-arquivo CAMINHO` (ou `REALESTATEFINDER_LOG_FILE`) para mudar o local e `--sem-log-arquivo` para desativar.
+- **Conteúdo**: argumentos da execução, início/fim e duração de cada consulta, download de página, classificação de sites (mantidos/descartados/não verificáveis), geração de URLs, leitura/gravação do arquivo, avisos, falhas (com stack trace em exceções não tratadas) e a duração total.
+- **Métricas**: ao final, o log traz um resumo (`métrica contador ...` e `métrica tempo ...` com n, total, média e máximo por operação, como `search.consulta`, `classifier.download`, `classifier.filtro`, `sites.gerar_url`, `storage.salvar`, `fluxo.*`).
+
 ## Estrutura
+
+- `realestatefinder/observability.py`: configuração de logs, cronometragem (`timed`) e métricas.
 
 - `realestatefinder/search.py`: consultas e extração das URLs.
 - `realestatefinder/classifier.py`: verificação de que o site oferece busca de imóveis.
@@ -54,7 +65,7 @@ local.sao_paulo.1=https://outra.com.br/
 - `config/imobiliarias/sites.json`: arquivo de parâmetros com o mapeamento de cada site (URL base, rotas, parâmetros GET, tipos e filtros suportados).
 - `realestatefinder/connectors/sites.py`: motor genérico que lê o arquivo acima e gera as URLs; não contém regras específicas de sites.
 - `realestatefinder/__main__.py`: linha de comando.
-- `tests/test_remax.py` (critérios e RE/MAX via motor unificado), `tests/test_sites.py` e `tests/test_classifier.py`: testes dos conectores, critérios e classificador.
+- `tests/test_remax.py` (critérios e RE/MAX via motor unificado), `tests/test_sites.py`, `tests/test_classifier.py` e `tests/test_observability.py`: testes dos conectores, critérios, classificador e logs/métricas.
 
 ## Como executar
 

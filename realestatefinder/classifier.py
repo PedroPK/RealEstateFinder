@@ -1,8 +1,14 @@
 """Classificação de sites: indica se o site oferece busca de imóveis."""
+import logging
 import re
+import time
 import urllib.parse
 import urllib.request
 from html.parser import HTMLParser
+
+from .observability import metrics, timed
+
+logger = logging.getLogger(__name__)
 
 USER_AGENT = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
@@ -110,16 +116,22 @@ def has_property_search(html: str) -> bool | None:
 
 def fetch_html(url: str, timeout: int = 20) -> str:
     request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
-    with urllib.request.urlopen(request, timeout=timeout) as response:
-        return response.read(2_000_000).decode("utf-8", errors="replace")
+    with timed("classifier.download", logger, url=url):
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            html = response.read(2_000_000).decode("utf-8", errors="replace")
+    logger.debug("download %s: %d caracteres", url, len(html))
+    return html
 
 
 def supports_property_search(url: str) -> bool | None:
     """True/False pela análise da página inicial; None quando o site não pôde ser lido."""
     try:
-        return has_property_search(fetch_html(url))
-    except (OSError, ValueError):
+        verdict = has_property_search(fetch_html(url))
+    except (OSError, ValueError) as exc:
+        logger.warning("site não verificável %s: %s", url, exc)
         return None
+    logger.debug("classificação %s: %s", url, verdict)
+    return verdict
 
 
 def _host(url: str) -> str:
@@ -144,6 +156,7 @@ def filter_search_sites(
     """
     from concurrent.futures import ThreadPoolExecutor
 
+    start = time.perf_counter()
     trusted = trusted_hosts()
     pending = [url for url in urls if _host(url) not in trusted]
     with ThreadPoolExecutor(max_workers=workers) as pool:
@@ -159,4 +172,16 @@ def filter_search_sites(
             kept.append(url)
             if verdict is None:
                 unverified.append(url)
+    elapsed = time.perf_counter() - start
+    metrics.record("classifier.filtro", elapsed)
+    metrics.incr("classifier.mantidos", len(kept))
+    metrics.incr("classifier.descartados", len(removed))
+    metrics.incr("classifier.nao_verificados", len(unverified))
+    for url in removed:
+        logger.info("descartado (sem busca de imóveis): %s", url)
+    logger.info(
+        "classificação: %d URLs (%d verificadas na rede) -> %d mantidas, %d descartadas, "
+        "%d não verificadas em %.3fs",
+        len(urls), len(pending), len(kept), len(removed), len(unverified), elapsed,
+    )
     return kept, removed, unverified
