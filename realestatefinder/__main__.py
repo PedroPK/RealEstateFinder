@@ -2,8 +2,7 @@ import argparse
 from pathlib import Path
 import sys
 
-from . import search, storage
-from .connectors.remax import build_search_url
+from . import classifier, search, storage
 from .connectors.sites import (
     SITE_LABELS,
     available_sites,
@@ -23,16 +22,15 @@ def main() -> None:
                         help="Arquivo de saída (padrão: imobiliarias.properties)")
     parser.add_argument("--pular-nacionais", action="store_true",
                         help="Não busca imobiliárias de atuação nacional")
-    parser.add_argument(
-        "--buscar-remax",
-        action="store_true",
-        help="Gera uma URL de busca pública de imóveis da RE/MAX",
-    )
+    parser.add_argument("--manter-sem-busca", action="store_true",
+                        help="Não descarta sites sem busca de imóveis na descoberta")
+    parser.add_argument("--revisar-arquivo", action="store_true",
+                        help="Reavalia o arquivo e remove sites sem busca de imóveis")
     parser.add_argument(
         "--buscar-site",
         action="append",
         choices=[*available_sites(), "todos"],
-        help="Gera URL de busca para um site mapeado; pode ser repetido ou usar 'todos'",
+        help="Gera URL de busca para um site mapeado (inclusive 'remax'); pode ser repetido ou usar 'todos'",
     )
     parser.add_argument(
         "--localidade",
@@ -68,10 +66,7 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    if args.buscar_remax and args.buscar_site:
-        parser.error("--buscar-remax e --buscar-site não podem ser usados juntos")
-
-    if args.buscar_remax or args.buscar_site:
+    if args.buscar_site:
         if args.cidade:
             parser.error("--cidade não pode ser usada junto com busca de imóveis")
         try:
@@ -93,16 +88,6 @@ def main() -> None:
             )
         except ValueError as exc:
             parser.error(str(exc))
-        if args.buscar_remax:
-            try:
-                url = build_search_url(criteria)
-            except ValueError as exc:
-                parser.error(str(exc))
-            print(url)
-            if criteria.suites is not None:
-                print("Aviso RE/MAX: filtro sem mapeamento: suites.", file=sys.stderr)
-            return
-
         site_ids = list(dict.fromkeys(args.buscar_site))
         if "todos" in site_ids:
             if len(site_ids) != 1:
@@ -122,7 +107,7 @@ def main() -> None:
                 )
         return
 
-    remax_only_options = (
+    property_search_options = (
         args.localidade,
         args.estado,
         args.cidade_imovel,
@@ -137,21 +122,38 @@ def main() -> None:
         args.tipo_imovel,
         args.caracteristica,
     )
-    if any(remax_only_options) or args.finalidade != TransactionType.BUY.value:
-        parser.error("Os filtros de imóveis só podem ser usados com --buscar-remax")
+    if any(property_search_options) or args.finalidade != TransactionType.BUY.value:
+        parser.error("Os filtros de imóveis só podem ser usados com --buscar-site")
 
     path = Path(args.arquivo)
     groups = storage.load(path)
 
+    def keep_search_sites(urls: list[str]) -> list[str]:
+        if args.manter_sem_busca:
+            return urls
+        kept, removed, unverified = classifier.filter_search_sites(urls)
+        if removed:
+            print(f"  {len(removed)} descartados por não oferecerem busca de imóveis.")
+        if unverified:
+            print(f"  {len(unverified)} mantidos sem verificação (site fora do ar ou só JavaScript).")
+        return kept
+
+    if args.revisar_arquivo:
+        print(f"Revisando {path}...")
+        groups = {group: keep_search_sites(urls) for group, urls in groups.items()}
+        storage.save(path, groups)
+        print(f"URLs salvas em {path}")
+        return
+
     if not args.pular_nacionais:
         print("Buscando imobiliárias nacionais...")
-        found = search.search_national()
+        found = keep_search_sites(search.search_national())
         groups["nacional"] = storage.merge(groups.get("nacional", []), found)
         print(f"  {len(found)} sites encontrados.")
 
     if args.cidade:
         print(f"Buscando imobiliárias em {args.cidade}...")
-        found = search.search_local(args.cidade)
+        found = keep_search_sites(search.search_local(args.cidade))
         key = f"local.{storage.city_key(args.cidade)}"
         groups[key] = storage.merge(groups.get(key, []), found)
         print(f"  {len(found)} sites encontrados.")

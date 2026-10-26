@@ -76,6 +76,14 @@ def _resolve_site(site_id: str, raw: Mapping[str, Any], data: Mapping[str, Any])
     if not isinstance(types, dict):
         raise _fail(f"site '{site_id}' com 'types' inválido.")
     site["types"] = types
+    site["feature_sets"] = {
+        name: data.get("feature_sets", {}).get(name, {})
+        for name in {item["features"] for item in site.get("query", []) if "features" in item}
+    }
+    if any(name not in data.get("feature_sets", {}) for name in site["feature_sets"]):
+        raise _fail(f"site '{site_id}' usa 'feature_sets' inexistente.")
+    if not site["base_url"].startswith("https://"):
+        raise _fail(f"site '{site_id}' deve usar uma URL base HTTPS.")
     unknown = set(site["supported_filters"]) - KNOWN_FILTERS
     if unknown:
         raise _fail(f"site '{site_id}' usa filtros desconhecidos: {sorted(unknown)}.")
@@ -182,6 +190,14 @@ def _segment(segment: Any, criteria: SearchCriteria, site: Mapping[str, Any]) ->
     return None
 
 
+def _slug_key(value: str) -> str:
+    return _slug(value).replace("-", " ")
+
+
+def _mapped_values(values: tuple[str, ...], mapping: Mapping[str, str]) -> list[str]:
+    return [mapping[key] for key in map(_slug_key, values) if key in mapping]
+
+
 def _query(criteria: SearchCriteria, site: Mapping[str, Any]) -> dict[str, str]:
     params: dict[str, str] = {}
     for item in site.get("query", []):
@@ -191,6 +207,19 @@ def _query(criteria: SearchCriteria, site: Mapping[str, Any]) -> dict[str, str]:
         elif "template" in item:
             if all(_provided(criteria, name) for name in item["requires"]):
                 params[key] = _render(item["template"], criteria, site)
+        elif "value" in item:
+            params[key] = item["value"]
+        elif item.get("free_text"):
+            if criteria.location is not None:
+                params[key] = criteria.location
+        elif item.get("types_multi"):
+            mapped = _mapped_values(criteria.property_types, site["types"])
+            if mapped:
+                params[key] = ",".join(mapped)
+        elif "features" in item:
+            mapped = _mapped_values(criteria.property_features, site["feature_sets"][item["features"]])
+            if mapped:
+                params[key] = ",".join(mapped)
         elif item.get("type"):
             value = _selected_type(criteria, site)
             if value is not None:
@@ -272,9 +301,11 @@ def unsupported_filters(criteria: SearchCriteria, site: str) -> tuple[str, ...]:
         if len(present) == 1:
             unsupported.append(present[0])
     if criteria.property_types and "property_types" in supported:
-        if (
-            len(criteria.property_types) != 1
-            or _slug(criteria.property_types[0]).replace("-", " ") not in config["types"]
-        ):
+        unmapped = any(_slug_key(value) not in config["types"] for value in criteria.property_types)
+        if unmapped or (len(criteria.property_types) != 1 and not config.get("multi_types")):
             unsupported.append("property_types")
+    if criteria.property_features and "property_features" in supported:
+        mapping = next(iter(config["feature_sets"].values()), {})
+        if any(_slug_key(value) not in mapping for value in criteria.property_features):
+            unsupported.append("property_features")
     return tuple(unsupported)

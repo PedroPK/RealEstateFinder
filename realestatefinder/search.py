@@ -14,6 +14,7 @@ IGNORED_DOMAINS = {
     "x.com", "tiktok.com", "wikipedia.org", "reclameaqui.com.br", "google.com",
     "duckduckgo.com", "pinterest.com", "glassdoor.com.br", "indeed.com",
     "jusbrasil.com.br", "gov.br", "mercadolivre.com.br", "olx.com.br",
+    "josefabricioneto.com.br", "imobibrasil.com.br",
 }
 
 NATIONAL_QUERIES = [
@@ -21,6 +22,8 @@ NATIONAL_QUERIES = [
     "maiores imobiliárias do Brasil",
     "corretoras de imóveis com atuação nacional",
     "rede de imobiliárias franquia Brasil",
+    "portal de imóveis comprar e alugar apartamentos casas",
+    "site de imóveis à venda e para alugar no Brasil",
 ]
 
 LOCAL_QUERIES = [
@@ -28,6 +31,8 @@ LOCAL_QUERIES = [
     "corretoras de imóveis em {cidade}",
     "imobiliária {cidade} comprar alugar imóveis",
     "melhores imobiliárias de {cidade}",
+    "imóveis à venda em {cidade}",
+    "apartamentos para alugar em {cidade}",
 ]
 
 
@@ -58,6 +63,8 @@ def _base_domain(host: str) -> str:
 
 
 def _is_ignored(host: str) -> bool:
+    if host.startswith("blog."):
+        return True
     return any(host == d or host.endswith("." + d) for d in IGNORED_DOMAINS)
 
 

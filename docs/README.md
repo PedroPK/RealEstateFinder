@@ -8,7 +8,7 @@ Aplicação em Python (somente biblioteca padrão, Python 3.10+) para busca de i
 - Gera um link para os resultados de busca públicos da RE/MAX Brasil.
 - Aceita localidade/termo de busca, estado, cidade e finalidade de compra ou aluguel.
 - Mapeia os filtros que existem na pesquisa avançada pública: faixa de preço, área mínima/máxima, tipo de imóvel, dormitórios, banheiros, vagas e características do imóvel.
-- Os parâmetros do site são mantidos em `config/imobiliarias/remax.json`, separados da lógica do conector.
+- Os parâmetros do site são mantidos em `config/imobiliarias/sites.json` (entrada `remax`), separados da lógica do motor.
 - Imprime a URL para que a busca seja aberta no site; não coleta nem armazena anúncios.
 - A aplicação não possui interface gráfica própria; os filtros são configurados pela linha de comando.
 
@@ -32,7 +32,10 @@ Na RE/MAX, os tipos de imóvel e as características são convertidos para os id
 ### Descoberta de sites de imobiliárias
 - Busca na web (DuckDuckGo HTML, sem chave de API) por imobiliárias com atuação nacional.
 - Busca opcional por imobiliárias de uma cidade, parametrizável.
-- Ignora redes sociais, portais genéricos e outros domínios que não são sites de imobiliárias.
+- Ignora redes sociais, portais genéricos, subdomínios `blog.` e outros domínios que não são sites de imobiliárias.
+- Consultas voltadas a portais e anúncios (por exemplo, "imóveis à venda em {cidade}"), além das consultas por imobiliárias.
+- Verifica se cada site encontrado permite buscar imóveis (`realestatefinder/classifier.py`) e descarta diretórios, blogs, associações, software, franquias e notícias. A análise da página inicial procura opção de compra/aluguel junto de filtros, anúncios com preço, links de navegação de venda e aluguel ou chamadas como "Pesquise o seu imóvel". Sites já mapeados em `sites.json` são aceitos sem acesso à rede; sites fora do ar ou que só carregam JavaScript ficam como "não verificáveis" e são mantidos, pois não há evidência de que não tenham busca.
+- `--manter-sem-busca` desativa o descarte; `--revisar-arquivo` reavalia um `.properties` existente e remove os sites sem busca. A heurística é uma aproximação: pode errar em sites atípicos, e nesses casos o domínio pode ser ajustado manualmente.
 - Salva as URLs raiz em um arquivo `.properties`, para reutilização sem novas buscas. Execuções seguintes mesclam sem duplicar.
 
 Formato do arquivo:
@@ -45,31 +48,31 @@ local.sao_paulo.1=https://outra.com.br/
 ## Estrutura
 
 - `realestatefinder/search.py`: consultas e extração das URLs.
+- `realestatefinder/classifier.py`: verificação de que o site oferece busca de imóveis.
 - `realestatefinder/storage.py`: leitura/escrita do `.properties`.
 - `realestatefinder/models.py`: critérios comuns de busca e tipos de transação.
-- `realestatefinder/connectors/remax.py`: montagem e validação de buscas para a RE/MAX Brasil.
 - `config/imobiliarias/sites.json`: arquivo de parâmetros com o mapeamento de cada site (URL base, rotas, parâmetros GET, tipos e filtros suportados).
 - `realestatefinder/connectors/sites.py`: motor genérico que lê o arquivo acima e gera as URLs; não contém regras específicas de sites.
-- `config/imobiliarias/remax.json`: mapeamento dos parâmetros públicos de busca da RE/MAX.
 - `realestatefinder/__main__.py`: linha de comando.
-- `tests/test_remax.py` e `tests/test_sites.py`: testes dos conectores e critérios.
+- `tests/test_remax.py` (critérios e RE/MAX via motor unificado), `tests/test_sites.py` e `tests/test_classifier.py`: testes dos conectores, critérios e classificador.
 
 ## Como executar
 
 ```
 python3 -m realestatefinder --cidade "Curitiba"
 python3 -m realestatefinder --cidade "Recife" --pular-nacionais --arquivo meus_sites.properties
-python3 -m realestatefinder --buscar-remax --localidade "Recife" --finalidade comprar
-python3 -m realestatefinder --buscar-remax --localidade "Boa Viagem, Recife" --finalidade alugar
-python3 -m realestatefinder --buscar-remax --estado Pernambuco --cidade-imovel Recife --preco-minimo 300000 --preco-maximo 700000 --area-minima 60 --quartos 2 --tipo-imovel Apartamento --caracteristica Piscina
+python3 -m realestatefinder --buscar-site remax --localidade "Recife" --finalidade comprar
+python3 -m realestatefinder --buscar-site remax --localidade "Boa Viagem, Recife" --finalidade alugar
+python3 -m realestatefinder --buscar-site remax --estado Pernambuco --cidade-imovel Recife --preco-minimo 300000 --preco-maximo 700000 --area-minima 60 --quartos 2 --tipo-imovel Apartamento --caracteristica Piscina
 python3 -m realestatefinder --buscar-site zap --estado PE --cidade-imovel Recife --tipo-imovel Apartamento --quartos 3 --suites 1 --preco-minimo 300000 --preco-maximo 700000
 python3 -m realestatefinder --buscar-site zap --buscar-site imovelguide --estado PE --cidade-imovel Recife --tipo-imovel Apartamento --banheiros 2
 python3 -m realestatefinder --buscar-site todos --estado PE --cidade-imovel Recife --tipo-imovel Apartamento
+python3 -m realestatefinder --revisar-arquivo
 python3 -m unittest discover -s tests
 ```
 
 Opções: `--cidade`, `--arquivo` (padrão `imobiliarias.properties`), `--pular-nacionais`.
-Para a busca RE/MAX, informe pelo menos um entre `--localidade`, `--estado` e `--cidade-imovel`; `--finalidade` aceita `comprar` ou `alugar` (padrão `comprar`). Os filtros numéricos são `--preco-minimo`, `--preco-maximo`, `--area-minima`, `--area-maxima`, `--quartos`, `--suites`, `--banheiros` e `--vagas`. `--tipo-imovel` e `--caracteristica` podem ser repetidos; os valores aceitos são as chaves correspondentes em `config/imobiliarias/remax.json`. Nos outros sites, os filtros efetivamente incluídos dependem do mapeamento de cada portal.
+Para a busca (`--buscar-site`), informe pelo menos um entre `--localidade`, `--estado` e `--cidade-imovel`; `--finalidade` aceita `comprar` ou `alugar` (padrão `comprar`). Os filtros numéricos são `--preco-minimo`, `--preco-maximo`, `--area-minima`, `--area-maxima`, `--quartos`, `--suites`, `--banheiros` e `--vagas`. `--tipo-imovel` e `--caracteristica` podem ser repetidos; os valores aceitos são as chaves de `type_sets`/`feature_sets` em `config/imobiliarias/sites.json` (a RE/MAX aceita vários tipos e características; valores sem mapeamento são omitidos com aviso). Nos outros sites, os filtros efetivamente incluídos dependem do mapeamento de cada portal.
 Para outros sites, use `--buscar-site` uma ou mais vezes (ou `todos`), `--estado` e `--cidade-imovel`, além dos filtros comuns. A aplicação gera as URLs para cada site e apresenta avisos sobre filtros omitidos por falta de um mapeamento confirmado.
 
 ## Limitações

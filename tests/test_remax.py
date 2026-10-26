@@ -1,13 +1,9 @@
-import json
 import unittest
-from pathlib import Path
-from tempfile import TemporaryDirectory
 from urllib.parse import parse_qs, urlparse
 
-from realestatefinder.connectors.remax import (
-    DEFAULT_CONFIG_PATH,
-    build_search_url,
-    load_config,
+from realestatefinder.connectors.sites import (
+    build_site_search_url,
+    unsupported_filters,
 )
 from realestatefinder.models import SearchCriteria, TransactionType
 
@@ -30,6 +26,10 @@ class SearchCriteriaTests(unittest.TestCase):
             SearchCriteria("Recife", min_price=500_000, max_price=400_000)
         with self.assertRaisesRegex(ValueError, "min_area"):
             SearchCriteria("Recife", min_area=100, max_area=50)
+
+
+def build_search_url(criteria: SearchCriteria) -> str:
+    return build_site_search_url(criteria, "remax")
 
 
 class ReMaxConnectorTests(unittest.TestCase):
@@ -107,37 +107,30 @@ class ReMaxConnectorTests(unittest.TestCase):
         self.assertNotIn("FreeText", parsed)
         self.assertNotIn("Bedrooms", parsed)
 
-    def test_rejects_unmapped_property_feature(self) -> None:
-        with self.assertRaisesRegex(ValueError, "não suportado"):
-            build_search_url(
-                SearchCriteria("Recife", property_features=("Área Pet",))
-            )
-
-    def test_rejects_unsupported_schema_version(self) -> None:
-        with TemporaryDirectory() as directory:
-            config_path = Path(directory) / "remax.json"
-            config_path.write_text('{"schema_version": 2}', encoding="utf-8")
-            with self.assertRaisesRegex(ValueError, "schema_version"):
-                load_config(config_path)
-
-    def test_legacy_config_without_optional_mappings_keeps_basic_search(self) -> None:
-        data = json.loads(DEFAULT_CONFIG_PATH.read_text(encoding="utf-8"))
-        for field in ("optional_parameters", "property_types", "property_features"):
-            data.pop(field)
-        with TemporaryDirectory() as directory:
-            config_path = Path(directory) / "remax.json"
-            config_path.write_text(json.dumps(data), encoding="utf-8")
-            url = build_search_url(SearchCriteria("Recife"), config_path)
-        self.assertEqual(
-            parse_qs(urlparse(url).query),
-            {
-                "FreeText": ["Recife"],
-                "Country": ["Brasil"],
-                "CountryId": ["55"],
-                "ListingClass": ["-1"],
-                "TransactionTypeUID": ["261"],
-            },
+    def test_unmapped_property_feature_is_omitted_and_reported(self) -> None:
+        criteria = SearchCriteria(
+            "Recife", property_features=("Área Pet", "Varanda Gourmet")
         )
+        parsed = parse_qs(urlparse(build_search_url(criteria)).query)
+        self.assertEqual(parsed["PropertyFeatures"], ["319"])
+        self.assertEqual(unsupported_filters(criteria, "remax"), ("property_features",))
+
+    def test_only_unmapped_feature_does_not_break_the_search(self) -> None:
+        criteria = SearchCriteria("Recife", property_features=("Área Pet",))
+        parsed = parse_qs(urlparse(build_search_url(criteria)).query)
+        self.assertNotIn("PropertyFeatures", parsed)
+        self.assertEqual(parsed["FreeText"], ["Recife"])
+
+    def test_suites_are_not_supported_by_remax(self) -> None:
+        criteria = SearchCriteria("Recife", suites=2)
+        self.assertEqual(unsupported_filters(criteria, "remax"), ("suites",))
+        self.assertNotIn("suites", build_search_url(criteria).lower())
+
+    def test_partially_unmapped_property_types_keep_the_mapped_ones(self) -> None:
+        criteria = SearchCriteria("Recife", property_types=("Apartamento", "Castelo"))
+        parsed = parse_qs(urlparse(build_search_url(criteria)).query)
+        self.assertEqual(parsed["MacroPropertyTypeUIDs"], ["2667"])
+        self.assertEqual(unsupported_filters(criteria, "remax"), ("property_types",))
 
 
 if __name__ == "__main__":

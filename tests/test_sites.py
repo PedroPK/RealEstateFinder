@@ -233,7 +233,7 @@ class SiteConnectorTests(unittest.TestCase):
         self.assertEqual(
             set(available_sites()),
             {
-                "zap", "imovelguide", "imovelweb", "wimoveis", "lopes", "cti",
+                "remax", "zap", "imovelguide", "imovelweb", "wimoveis", "lopes", "cti",
                 "luizaparizi", "ancora", "djm", "gvi",
                 "newville", "bci",
                 "bellolar", "trueimoveis", "moradasol", "redeimoveispe", "fleischman",
