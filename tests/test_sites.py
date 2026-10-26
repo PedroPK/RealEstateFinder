@@ -1,6 +1,12 @@
+import json
+import os
+import tempfile
 import unittest
+from pathlib import Path
+from unittest import mock
 from urllib.parse import parse_qs, urlparse
 
+from realestatefinder.connectors import sites
 from realestatefinder.connectors.sites import (
     available_sites,
     build_site_search_url,
@@ -237,6 +243,59 @@ class SiteConnectorTests(unittest.TestCase):
     def test_unknown_site_is_rejected(self) -> None:
         with self.assertRaisesRegex(ValueError, "sem mapeamento"):
             build_site_search_url(SearchCriteria("Recife"), "unknown")
+
+
+class SitesConfigFileTests(unittest.TestCase):
+    def _load(self, content: dict) -> dict:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "sites.json"
+            path.write_text(json.dumps(content), encoding="utf-8")
+            return sites._load_sites(str(path))
+
+    def test_default_file_defines_every_available_site(self) -> None:
+        data = json.loads(sites.DEFAULT_SITES_CONFIG_PATH.read_text(encoding="utf-8"))
+        self.assertEqual(set(data["sites"]), set(available_sites()))
+
+    def test_custom_file_adds_site_without_code_change(self) -> None:
+        loaded = self._load({
+            "transaction_sets": {"t": {"comprar": "venda", "alugar": "aluguel"}},
+            "sites": {
+                "novo": {
+                    "label": "Novo", "base_url": "https://novo.example",
+                    "transactions": "t", "path": ["{transaction}"],
+                    "query": [{"field": "bedrooms", "param": "q"}],
+                    "supported_filters": ["bedrooms"],
+                }
+            },
+        })
+        with mock.patch.dict(sites._SITES, loaded, clear=True):
+            self.assertEqual(
+                build_site_search_url(SearchCriteria("Recife", bedrooms=2), "novo"),
+                "https://novo.example/venda?q=2",
+            )
+
+    def test_unknown_filter_name_is_rejected(self) -> None:
+        with self.assertRaisesRegex(ValueError, "filtros desconhecidos"):
+            self._load({
+                "transaction_sets": {"t": {"comprar": "v"}},
+                "sites": {
+                    "x": {
+                        "label": "X", "base_url": "https://x.example",
+                        "transactions": "t", "path": ["{transaction}"],
+                        "supported_filters": ["inexistente"],
+                    }
+                },
+            })
+
+    def test_missing_required_field_is_rejected(self) -> None:
+        with self.assertRaisesRegex(ValueError, "sem o campo"):
+            self._load({"sites": {"x": {"label": "X"}}})
+
+    def test_environment_variable_selects_the_config_file(self) -> None:
+        with mock.patch.dict(os.environ, {sites.CONFIG_ENV_VAR: "/tmp/outro.json"}):
+            with mock.patch.object(sites, "_load_sites", return_value={}) as loader:
+                sites.load_sites()
+        loader.assert_called_once_with("/tmp/outro.json")
 
 
 if __name__ == "__main__":

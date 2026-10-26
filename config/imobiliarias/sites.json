@@ -1,0 +1,235 @@
+{
+  "_ajuda": [
+    "Arquivo de parâmetros do mapeamento de filtros para os sites de imobiliárias (comando --buscar-site).",
+    "Campos de filtro (nomes de SearchCriteria): state, city, min_price, max_price, min_area, max_area, bedrooms, suites, bathrooms, parking_spaces, property_types, property_features.",
+    "Marcadores de caminho: {transaction}, {type}, {uf}, {city}, {city_plus}. Segmento obrigatório = texto; segmento opcional = {\"any\": [alternativas], \"optional\": true, \"when\": \"type\" (só entra se houver tipo), \"strict\": true (erro se faltar dado em vez de omitir)}.",
+    "query: lista ordenada de parâmetros GET; cada item usa 'field' (filtro), 'transaction' (valores por transação), 'template'+'requires' ou 'type': true.",
+    "supported_filters: somente filtros com evidência pública. Filtros ausentes são omitidos e a CLI avisa; um site nunca deve receber filtro especulativo.",
+    "Para incluir um novo filtro/site, edite este arquivo e rode: python3 -m unittest discover -s tests"
+  ],
+  "transaction_sets": {
+    "venda_aluguel": {"comprar": "venda", "alugar": "aluguel"},
+    "a_venda_para_alugar": {"comprar": "a-venda", "alugar": "para-alugar"}
+  },
+  "type_sets": {
+    "zap": {"apartamento": "apartamentos", "casa": "casas", "terreno": "terrenos"},
+    "imovelguide": {"apartamento": "apartamento", "casa": "casa"},
+    "navent": {"apartamento": "apartamentos", "casa": "casas", "terreno": "terrenos"},
+    "kenlo": {
+      "apartamento": "apartamento", "casa": "casa", "flat": "flat",
+      "terreno": "terreno", "cobertura": "cobertura", "studio": "studio"
+    },
+    "cti": {
+      "apartamento": "apartamento", "casa": "casa", "cobertura": "cobertura",
+      "flat": "flat", "studio": "studio"
+    },
+    "lopes": {"apartamento": "apartamento", "casa": "casa", "terreno": "terreno"},
+    "luizaparizi": {
+      "apartamento": "apartamento", "casa": "casa", "studio": "studio",
+      "terreno": "terreno", "cobertura": "cobertura"
+    },
+    "ancora": {
+      "apartamento": "apartamento", "casa": "casa", "fazenda": "fazenda",
+      "flat": "flat", "terreno": "terreno", "casa comercial": "casa-comercial",
+      "galpao": "galpao", "loja": "loja", "predio edificio": "predio_edificio",
+      "sala": "sala"
+    },
+    "newville": {
+      "casa": "casa", "flat": "flat", "cobertura": "cobertura", "galpao": "galpao",
+      "loja": "loja", "predio": "predio", "sala": "sala", "studio": "studio"
+    }
+  },
+  "sites": {
+    "zap": {
+      "label": "ZAP Imóveis",
+      "base_url": "https://www.zapimoveis.com.br",
+      "transactions": "venda_aluguel",
+      "types": "zap",
+      "type_default": "imoveis",
+      "path": [
+        "{transaction}",
+        "{type}",
+        {"any": ["{uf}+{city}", "{uf}"], "optional": true, "strict": true}
+      ],
+      "trailing_slash": true,
+      "query": [
+        {"field": "bedrooms", "param": "quartos"},
+        {"field": "suites", "param": "suites"},
+        {"field": "bathrooms", "param": "banheiros"},
+        {"field": "parking_spaces", "param": "vagas"},
+        {"field": "min_price", "param": "precoMinimo"},
+        {"field": "max_price", "param": "precoMaximo"},
+        {"field": "min_area", "param": "areaMinima"},
+        {"field": "max_area", "param": "areaMaxima"}
+      ],
+      "supported_filters": [
+        "state", "city", "property_types", "bedrooms", "suites", "bathrooms",
+        "parking_spaces", "min_price", "max_price", "min_area", "max_area"
+      ]
+    },
+    "imovelguide": {
+      "label": "Imóvel Guide",
+      "base_url": "https://imovelguide.com.br",
+      "transactions": "venda_aluguel",
+      "types": "imovelguide",
+      "type_default": "todos",
+      "path": ["{transaction}", "{type}", "{uf}", "{city}"],
+      "query": [
+        {"field": "bedrooms", "param": "quarto"},
+        {"field": "bathrooms", "param": "banheiro"},
+        {"field": "parking_spaces", "param": "vagas"},
+        {"field": "min_price", "param": "precominimo"},
+        {"field": "max_price", "param": "precomaximo"},
+        {"field": "min_area", "param": "areaminima"},
+        {"field": "max_area", "param": "areamaxima"}
+      ],
+      "supported_filters": [
+        "state", "city", "property_types", "bedrooms", "bathrooms",
+        "parking_spaces", "min_price", "max_price", "min_area", "max_area"
+      ]
+    },
+    "imovelweb": {
+      "label": "Imovelweb",
+      "base_url": "https://www.imovelweb.com.br",
+      "transactions": "venda_aluguel",
+      "types": "navent",
+      "type_default": "imoveis",
+      "path": ["{type}-{transaction}-{city}-{uf}"],
+      "path_suffixes": [
+        {"field": "bathrooms", "singular": "mais-de-{value}-banheiro", "plural": "mais-de-{value}-banheiros"},
+        {"field": "parking_spaces", "singular": "mais-de-{value}-vaga", "plural": "mais-de-{value}-vagas"},
+        {"field": "bedrooms", "singular": "mais-de-{value}-quarto", "plural": "mais-de-{value}-quartos"}
+      ],
+      "extension": ".html",
+      "supported_filters": [
+        "state", "city", "property_types", "bedrooms", "bathrooms", "parking_spaces"
+      ]
+    },
+    "wimoveis": {
+      "label": "Wimóveis",
+      "base_url": "https://www.wimoveis.com.br",
+      "transactions": "venda_aluguel",
+      "types": "navent",
+      "type_default": "imoveis",
+      "path": ["{transaction}", "{type}", "{uf}", "{city}"],
+      "supported_filters": ["state", "city", "property_types"]
+    },
+    "lopes": {
+      "label": "Lopes",
+      "base_url": "https://www.lopes.com.br",
+      "transactions": "venda_aluguel",
+      "types": "lopes",
+      "path": [
+        "busca", "{transaction}", "br", "{uf}", "{city}",
+        {"any": ["tipo/{type}"], "optional": true}
+      ],
+      "supported_filters": ["state", "city", "property_types"]
+    },
+    "cti": {
+      "label": "CTI Imobiliária",
+      "base_url": "https://www.ctiimobiliaria.com.br",
+      "transactions": "venda_aluguel",
+      "types": "cti",
+      "path": ["{transaction}", {"any": ["{type}/{city}"], "optional": true, "when": "type", "strict": true}],
+      "supported_filters": ["city", "property_types"]
+    },
+    "luizaparizi": {
+      "label": "Luiza Parizi Imóveis",
+      "base_url": "https://www.luizapariziimoveis.com.br",
+      "transactions": "venda_aluguel",
+      "types": "luizaparizi",
+      "type_required_message": "Escolha um tipo de imóvel para Luiza Parizi (por exemplo, --tipo-imovel Apartamento).",
+      "path": ["{transaction}", "{type}", "{uf}", "{city}"],
+      "supported_filters": ["state", "city", "property_types"]
+    },
+    "ancora": {
+      "label": "Âncora Imobiliária",
+      "base_url": "https://ancoraimobiliaria.com.br",
+      "transactions": "venda_aluguel",
+      "types": "ancora",
+      "type_default": "residencial_comercial",
+      "path": ["{transaction}", "{type}", "{city}"],
+      "trailing_slash": true,
+      "supported_filters": ["city", "property_types"]
+    },
+    "newville": {
+      "label": "Newville",
+      "base_url": "https://newville.com.br",
+      "transactions": {"comprar": "venda", "alugar": "locacao"},
+      "types": "newville",
+      "path": ["imoveis"],
+      "query": [
+        {"param": "negociacao", "transaction": {"comprar": "venda", "alugar": "locacao"}},
+        {"param": "cidade", "template": "{city_plus}--{uf}", "requires": ["city", "state"]},
+        {"field": "min_price", "param": "preco_min"},
+        {"field": "max_price", "param": "preco_max"},
+        {"field": "suites", "param": "suites"},
+        {"field": "parking_spaces", "param": "vagas"},
+        {"param": "tipo", "type": true}
+      ],
+      "together": [["state", "city"]],
+      "supported_filters": [
+        "transaction", "state", "city", "min_price", "max_price", "suites",
+        "parking_spaces", "property_types"
+      ]
+    },
+    "djm": {
+      "label": "DJM Imóveis",
+      "base_url": "https://www.djmimoveis.com.br",
+      "transactions": {"comprar": "comprar"},
+      "transaction_unsupported_message": "A rota pública de aluguel da DJM não foi confirmada.",
+      "path": ["{transaction}"],
+      "supported_filters": []
+    },
+    "gvi": {
+      "label": "GVI Imóveis",
+      "base_url": "https://www.gviimoveis.com.br",
+      "transactions": "venda_aluguel",
+      "path": ["{transaction}"],
+      "supported_filters": []
+    },
+    "bci": {
+      "label": "BCI Imobiliária",
+      "base_url": "https://bciimobiliaria.com.br",
+      "transactions": "a_venda_para_alugar",
+      "path": ["imoveis", "{transaction}"],
+      "supported_filters": []
+    },
+    "bellolar": {
+      "label": "Bellolar Imóveis",
+      "base_url": "https://www.bellolarimoveis.com.br",
+      "template": "kenlo"
+    },
+    "trueimoveis": {
+      "label": "True Imóveis",
+      "base_url": "https://www.trueimoveis.com.br",
+      "template": "kenlo"
+    },
+    "moradasol": {
+      "label": "Morada Sol",
+      "base_url": "https://www.moradasol.com.br",
+      "template": "kenlo"
+    },
+    "redeimoveispe": {
+      "label": "Rede Imóveis PE",
+      "base_url": "https://www.redeimoveispe.com.br",
+      "template": "kenlo"
+    },
+    "fleischman": {
+      "label": "Fleischman",
+      "base_url": "https://www.fleischman.com.br",
+      "template": "kenlo"
+    }
+  },
+  "templates": {
+    "kenlo": {
+      "transactions": "a_venda_para_alugar",
+      "types": "kenlo",
+      "type_required_with_city": true,
+      "type_required_message": "Escolha um tipo de imóvel para este site (por exemplo, --tipo-imovel Apartamento).",
+      "path": ["imoveis", "{transaction}", {"any": ["{type}/{city}"], "optional": true, "when": "type", "strict": true}],
+      "query": [{"field": "bedrooms", "param": "quartos"}],
+      "supported_filters": ["city", "property_types", "bedrooms"]
+    }
+  }
+}

@@ -1,157 +1,109 @@
-"""Busca por filtros observados em portais e imobiliárias externas."""
+"""Busca por filtros observados em portais e imobiliárias externas.
+
+O mapeamento de cada site fica em config/imobiliarias/sites.json; este módulo
+é apenas o motor genérico que o interpreta.
+"""
+import json
+import os
 import re
 import unicodedata
-from collections.abc import Callable, Mapping
+from collections.abc import Mapping
+from functools import cache
+from pathlib import Path
+from typing import Any
 from urllib.parse import urlencode
 
 from ..models import SearchCriteria
 
+DEFAULT_SITES_CONFIG_PATH = (
+    Path(__file__).resolve().parents[2] / "config" / "imobiliarias" / "sites.json"
+)
+CONFIG_ENV_VAR = "REALESTATEFINDER_SITES_CONFIG"
+
+KNOWN_FILTERS = frozenset({
+    "transaction", "state", "city", "min_price", "max_price", "min_area",
+    "max_area", "bedrooms", "suites", "bathrooms", "parking_spaces",
+    "property_types", "property_features",
+})
+_PLACEHOLDER = re.compile(r"\{(\w+)\}")
+
 _STATE_CODES = {
-    "acre": "ac",
-    "alagoas": "al",
-    "amapa": "ap",
-    "amazonas": "am",
-    "bahia": "ba",
-    "ceara": "ce",
-    "distrito federal": "df",
-    "espirito santo": "es",
-    "goias": "go",
-    "maranhao": "ma",
-    "mato grosso": "mt",
-    "mato grosso do sul": "ms",
-    "minas gerais": "mg",
-    "para": "pa",
-    "paraiba": "pb",
-    "parana": "pr",
-    "pernambuco": "pe",
-    "piaui": "pi",
-    "rio de janeiro": "rj",
-    "rio grande do norte": "rn",
-    "rio grande do sul": "rs",
-    "rondonia": "ro",
-    "roraima": "rr",
-    "santa catarina": "sc",
-    "sao paulo": "sp",
-    "sergipe": "se",
+    "acre": "ac", "alagoas": "al", "amapa": "ap", "amazonas": "am",
+    "bahia": "ba", "ceara": "ce", "distrito federal": "df",
+    "espirito santo": "es", "goias": "go", "maranhao": "ma",
+    "mato grosso": "mt", "mato grosso do sul": "ms", "minas gerais": "mg",
+    "para": "pa", "paraiba": "pb", "parana": "pr", "pernambuco": "pe",
+    "piaui": "pi", "rio de janeiro": "rj", "rio grande do norte": "rn",
+    "rio grande do sul": "rs", "rondonia": "ro", "roraima": "rr",
+    "santa catarina": "sc", "sao paulo": "sp", "sergipe": "se",
     "tocantins": "to",
 }
-_LUIZAPARIZI_TYPES = {
-    "apartamento": "apartamento",
-    "casa": "casa",
-    "studio": "studio",
-    "terreno": "terreno",
-    "cobertura": "cobertura",
-}
-_ANCORA_TYPES = {
-    "apartamento": "apartamento",
-    "casa": "casa",
-    "fazenda": "fazenda",
-    "flat": "flat",
-    "terreno": "terreno",
-    "casa comercial": "casa-comercial",
-    "galpao": "galpao",
-    "loja": "loja",
-    "predio edificio": "predio_edificio",
-    "sala": "sala",
-}
-_NEWVILLE_TYPES = {
-    "casa": "casa",
-    "flat": "flat",
-    "cobertura": "cobertura",
-    "galpao": "galpao",
-    "loja": "loja",
-    "predio": "predio",
-    "sala": "sala",
-    "studio": "studio",
-}
-
-_ZAP_TYPES = {
-    "apartamento": "apartamentos",
-    "casa": "casas",
-    "terreno": "terrenos",
-}
-_IMOVELGUIDE_TYPES = {
-    "apartamento": "apartamento",
-    "casa": "casa",
-}
-_IMOVELWEB_TYPES = {
-    "apartamento": "apartamentos",
-    "casa": "casas",
-    "terreno": "terrenos",
-}
-_KENLO_TYPES = {
-    "apartamento": "apartamento",
-    "casa": "casa",
-    "flat": "flat",
-    "terreno": "terreno",
-    "cobertura": "cobertura",
-    "studio": "studio",
-}
-_CTI_TYPES = {
-    "apartamento": "apartamento",
-    "casa": "casa",
-    "cobertura": "cobertura",
-    "flat": "flat",
-    "studio": "studio",
-}
-_LOPES_TYPES = {
-    "apartamento": "apartamento",
-    "casa": "casa",
-    "terreno": "terreno",
-}
-
-SITE_BASE_URLS = {
-    "zap": "https://www.zapimoveis.com.br",
-    "imovelguide": "https://imovelguide.com.br",
-    "imovelweb": "https://www.imovelweb.com.br",
-    "wimoveis": "https://www.wimoveis.com.br",
-    "lopes": "https://www.lopes.com.br",
-    "cti": "https://www.ctiimobiliaria.com.br",
-    "luizaparizi": "https://www.luizapariziimoveis.com.br",
-    "ancora": "https://ancoraimobiliaria.com.br",
-    "newville": "https://newville.com.br",
-    "djm": "https://www.djmimoveis.com.br",
-    "gvi": "https://www.gviimoveis.com.br",
-    "bci": "https://bciimobiliaria.com.br",
-    "bellolar": "https://www.bellolarimoveis.com.br",
-    "trueimoveis": "https://www.trueimoveis.com.br",
-    "moradasol": "https://www.moradasol.com.br",
-    "redeimoveispe": "https://www.redeimoveispe.com.br",
-    "fleischman": "https://www.fleischman.com.br",
-}
-
-SITE_LABELS = {
-    "zap": "ZAP Imóveis",
-    "imovelguide": "Imóvel Guide",
-    "imovelweb": "Imovelweb",
-    "wimoveis": "Wimóveis",
-    "lopes": "Lopes",
-    "cti": "CTI Imobiliária",
-    "luizaparizi": "Luiza Parizi Imóveis",
-    "ancora": "Âncora Imobiliária",
-    "newville": "Newville",
-    "djm": "DJM Imóveis",
-    "gvi": "GVI Imóveis",
-    "bci": "BCI Imobiliária",
-    "bellolar": "Bellolar Imóveis",
-    "trueimoveis": "True Imóveis",
-    "moradasol": "Morada Sol",
-    "redeimoveispe": "Rede Imóveis PE",
-    "fleischman": "Fleischman",
-}
-
-_ALL_SITE_IDS = tuple(SITE_BASE_URLS)
-
-
-def available_sites() -> tuple[str, ...]:
-    """Retorna os identificadores de sites com busca pública mapeada."""
-    return _ALL_SITE_IDS
 
 
 def _slug(value: str) -> str:
     normalized = unicodedata.normalize("NFKD", value)
     ascii_value = normalized.encode("ascii", "ignore").decode().lower()
     return re.sub(r"[^a-z0-9]+", "-", ascii_value).strip("-")
+
+
+def _fail(message: str) -> ValueError:
+    return ValueError(f"Configuração de sites inválida: {message}")
+
+
+def _load_raw(path: Path) -> dict[str, Any]:
+    with path.open(encoding="utf-8") as handle:
+        data = json.load(handle)
+    if not isinstance(data, dict) or not isinstance(data.get("sites"), dict) or not data["sites"]:
+        raise _fail("'sites' deve ser um objeto não vazio.")
+    return data
+
+
+def _resolve_site(site_id: str, raw: Mapping[str, Any], data: Mapping[str, Any]) -> dict[str, Any]:
+    site = dict(data.get("templates", {}).get(raw.get("template"), {}))
+    site.update({key: value for key, value in raw.items() if key != "template"})
+    for key in ("label", "base_url", "transactions", "path", "supported_filters"):
+        if key not in site:
+            raise _fail(f"site '{site_id}' sem o campo '{key}'.")
+    transactions = site["transactions"]
+    if isinstance(transactions, str):
+        transactions = data.get("transaction_sets", {}).get(transactions)
+    if not isinstance(transactions, dict) or not transactions:
+        raise _fail(f"site '{site_id}' com 'transactions' inválido.")
+    site["transactions"] = transactions
+    types = site.get("types", {})
+    if isinstance(types, str):
+        types = data.get("type_sets", {}).get(types)
+    if not isinstance(types, dict):
+        raise _fail(f"site '{site_id}' com 'types' inválido.")
+    site["types"] = types
+    unknown = set(site["supported_filters"]) - KNOWN_FILTERS
+    if unknown:
+        raise _fail(f"site '{site_id}' usa filtros desconhecidos: {sorted(unknown)}.")
+    return site
+
+
+@cache
+def _load_sites(path: str) -> dict[str, dict[str, Any]]:
+    data = _load_raw(Path(path))
+    return {
+        site_id: _resolve_site(site_id, raw, data)
+        for site_id, raw in data["sites"].items()
+    }
+
+
+def load_sites() -> dict[str, dict[str, Any]]:
+    """Carrega (com cache) o mapeamento de sites do arquivo de parâmetros."""
+    return _load_sites(os.environ.get(CONFIG_ENV_VAR, str(DEFAULT_SITES_CONFIG_PATH)))
+
+
+_SITES = load_sites()
+SITE_BASE_URLS = {site_id: site["base_url"] for site_id, site in _SITES.items()}
+SITE_LABELS = {site_id: site["label"] for site_id, site in _SITES.items()}
+
+
+def available_sites() -> tuple[str, ...]:
+    """Retorna os identificadores de sites com busca pública mapeada."""
+    return tuple(_SITES)
 
 
 def _state_code(state: str | None) -> str:
@@ -174,28 +126,80 @@ def _city(criteria: SearchCriteria) -> str:
     return _slug(value)
 
 
-def _selected_type(
-    criteria: SearchCriteria,
-    mapping: dict[str, str],
-    *,
-    default: str | None,
-) -> str | None:
-    if not criteria.property_types:
-        return default
+def _selected_type(criteria: SearchCriteria, site: Mapping[str, Any]) -> str | None:
+    default = site.get("type_default")
     if len(criteria.property_types) != 1:
         return default
-    return mapping.get(
-        _slug(criteria.property_types[0]).replace("-", " "),
-        default,
-    )
+    return site["types"].get(_slug(criteria.property_types[0]).replace("-", " "), default)
 
 
-def _transaction(criteria: SearchCriteria) -> str:
-    return "venda" if criteria.transaction.value == "comprar" else "aluguel"
+def _transaction(criteria: SearchCriteria, site: Mapping[str, Any]) -> str:
+    value = site["transactions"].get(criteria.transaction.value)
+    if value is None:
+        raise ValueError(
+            site.get("transaction_unsupported_message")
+            or f"Finalidade '{criteria.transaction.value}' não mapeada para este site."
+        )
+    return value
 
 
-def _query_url(base: str, params: Mapping[str, str | int | float]) -> str:
-    return f"{base}?{urlencode({key: _number(value) for key, value in params.items()})}"
+def _placeholder(name: str, criteria: SearchCriteria, site: Mapping[str, Any]) -> str:
+    if name == "transaction":
+        return _transaction(criteria, site)
+    if name == "uf":
+        return _state_code(criteria.state)
+    if name == "city":
+        return _city(criteria)
+    if name == "city_plus":
+        return _city(criteria).replace("-", "+")
+    if name == "type":
+        value = _selected_type(criteria, site)
+        if value is None:
+            raise ValueError(
+                site.get("type_required_message") or "Informe o tipo de imóvel (--tipo-imovel)."
+            )
+        return value
+    raise _fail(f"marcador desconhecido '{{{name}}}'.")
+
+
+def _render(template: str, criteria: SearchCriteria, site: Mapping[str, Any]) -> str:
+    return _PLACEHOLDER.sub(lambda m: _placeholder(m.group(1), criteria, site), template)
+
+
+def _segment(segment: Any, criteria: SearchCriteria, site: Mapping[str, Any]) -> str | None:
+    if isinstance(segment, str):
+        return _render(segment, criteria, site)
+    if segment.get("when") == "type" and _selected_type(criteria, site) is None:
+        return None
+    error: ValueError | None = None
+    for alternative in segment["any"]:
+        try:
+            return _render(alternative, criteria, site)
+        except ValueError as exc:
+            error = error or exc
+    if error is not None and segment.get("strict"):
+        raise error
+    return None
+
+
+def _query(criteria: SearchCriteria, site: Mapping[str, Any]) -> dict[str, str]:
+    params: dict[str, str] = {}
+    for item in site.get("query", []):
+        key = item["param"]
+        if "transaction" in item:
+            params[key] = item["transaction"][criteria.transaction.value]
+        elif "template" in item:
+            if all(_provided(criteria, name) for name in item["requires"]):
+                params[key] = _render(item["template"], criteria, site)
+        elif item.get("type"):
+            value = _selected_type(criteria, site)
+            if value is not None:
+                params[key] = value
+        else:
+            value = getattr(criteria, item["field"])
+            if value is not None:
+                params[key] = _number(value)
+    return params
 
 
 def _number(value: str | int | float) -> str:
@@ -204,267 +208,46 @@ def _number(value: str | int | float) -> str:
     return str(value)
 
 
-def _zap(criteria: SearchCriteria) -> str:
-    base = SITE_BASE_URLS["zap"]
-    transaction = _transaction(criteria)
-    property_type = _selected_type(criteria, _ZAP_TYPES, default="imoveis")
-    assert property_type is not None
-    path = f"{base}/{transaction}/{property_type}/"
-    if criteria.city is not None or criteria.location is not None:
-        path += f"{_state_code(criteria.state)}+{_city(criteria)}/"
-    elif criteria.state is not None:
-        path += f"{_state_code(criteria.state)}/"
-
-    params: dict[str, str | int | float] = {}
-    for field, key in (
-        ("bedrooms", "quartos"),
-        ("suites", "suites"),
-        ("bathrooms", "banheiros"),
-        ("parking_spaces", "vagas"),
-        ("min_price", "precoMinimo"),
-        ("max_price", "precoMaximo"),
-        ("min_area", "areaMinima"),
-        ("max_area", "areaMaxima"),
-    ):
-        value = getattr(criteria, field)
-        if value is not None:
-            params[key] = value
-    return f"{path}?{urlencode({key: _number(value) for key, value in params.items()})}" if params else path
+def _provided(criteria: SearchCriteria, name: str) -> bool:
+    if name == "city":
+        return criteria.city is not None or criteria.location is not None
+    return getattr(criteria, name) is not None
 
 
-def _imovelguide(criteria: SearchCriteria) -> str:
-    property_type = _selected_type(criteria, _IMOVELGUIDE_TYPES, default="todos")
-    assert property_type is not None
-    base = (
-        f"{SITE_BASE_URLS['imovelguide']}/{_transaction(criteria)}/"
-        f"{property_type}/{_state_code(criteria.state)}/{_city(criteria)}"
-    )
-    params: dict[str, str | int | float] = {}
-    for field, key in (
-        ("bedrooms", "quarto"),
-        ("bathrooms", "banheiro"),
-        ("parking_spaces", "vagas"),
-        ("min_price", "precominimo"),
-        ("max_price", "precomaximo"),
-        ("min_area", "areaminima"),
-        ("max_area", "areamaxima"),
-    ):
-        value = getattr(criteria, field)
-        if value is not None:
-            params[key] = value
-    return _query_url(base, params) if params else base
+def build_site_search_url(criteria: SearchCriteria, site: str) -> str:
+    """Gera URL de pesquisa para um dos sites com mapeamento confirmado."""
+    if site not in _SITES:
+        raise ValueError(f"Site sem mapeamento de busca: '{site}'.")
+    config = _SITES[site]
+    if config.get("type_required_with_city") and _provided(criteria, "city"):
+        if _selected_type(criteria, config) is None:
+            _placeholder("type", criteria, config)
 
-
-def _imovelweb(criteria: SearchCriteria) -> str:
-    property_type = _selected_type(criteria, _IMOVELWEB_TYPES, default="imoveis")
-    assert property_type is not None
-    path = (
-        f"{SITE_BASE_URLS['imovelweb']}/{property_type}-{_transaction(criteria)}-"
-        f"{_city(criteria)}-{_state_code(criteria.state)}"
-    )
+    segments = [
+        value
+        for value in (_segment(item, criteria, config) for item in config["path"])
+        if value is not None
+    ]
+    path = "/".join([config["base_url"].rstrip("/"), *segments])
     suffixes = []
-    for field, label in (
-        ("bathrooms", "banheiro"),
-        ("parking_spaces", "vaga"),
-        ("bedrooms", "quarto"),
-    ):
-        value = getattr(criteria, field)
+    for rule in config.get("path_suffixes", []):
+        value = getattr(criteria, rule["field"])
         if value is not None:
-            suffixes.append(f"mais-de-{value}-{label}{'s' if value != 1 else ''}")
+            template = rule["singular"] if value == 1 else rule["plural"]
+            suffixes.append(template.format(value=value))
     if suffixes:
         path += "-" + "-".join(suffixes)
-    return f"{path}.html"
-
-
-def _wimoveis(criteria: SearchCriteria) -> str:
-    property_type = _selected_type(criteria, _IMOVELWEB_TYPES, default="imoveis")
-    assert property_type is not None
-    singular = {
-        "apartamentos": "apartamentos",
-        "casas": "casas",
-        "terrenos": "terrenos",
-        "imoveis": "imoveis",
-    }.get(property_type, "imoveis")
-    return (
-        f"{SITE_BASE_URLS['wimoveis']}/{_transaction(criteria)}/{singular}/"
-        f"{_state_code(criteria.state)}/{_city(criteria)}"
-    )
-
-
-def _kenlo(site: str, criteria: SearchCriteria) -> str:
-    transaction = "a-venda" if criteria.transaction.value == "comprar" else "para-alugar"
-    property_type = _selected_type(criteria, _KENLO_TYPES, default=None)
-    base = f"{SITE_BASE_URLS[site]}/imoveis/{transaction}"
-    if property_type is not None:
-        base += f"/{property_type}/{_city(criteria)}"
-    elif criteria.city is not None or criteria.location is not None:
-        raise ValueError(
-            "Escolha um tipo de imóvel para este site (por exemplo, --tipo-imovel Apartamento)."
-        )
-    params = {"quartos": criteria.bedrooms} if criteria.bedrooms is not None else {}
-    return _query_url(base, params) if params else base
-
-
-def _lopes(criteria: SearchCriteria) -> str:
-    property_type = _selected_type(criteria, _LOPES_TYPES, default=None)
-    path = (
-        f"{SITE_BASE_URLS['lopes']}/busca/{_transaction(criteria)}/br/"
-        f"{_state_code(criteria.state)}/{_city(criteria)}"
-    )
-    if property_type is not None:
-        path += f"/tipo/{property_type}"
-    return path
-
-
-def _cti(criteria: SearchCriteria) -> str:
-    property_type = _selected_type(criteria, _CTI_TYPES, default=None)
-    path = f"{SITE_BASE_URLS['cti']}/{_transaction(criteria)}"
-    if property_type is not None:
-        path += f"/{property_type}/{_city(criteria)}"
-    return path
-
-
-def _luizaparizi(criteria: SearchCriteria) -> str:
-    property_type = _selected_type(criteria, _LUIZAPARIZI_TYPES, default=None)
-    if property_type is None:
-        raise ValueError(
-            "Escolha um tipo de imóvel para Luiza Parizi "
-            "(por exemplo, --tipo-imovel Apartamento)."
-        )
-    return (
-        f"{SITE_BASE_URLS['luizaparizi']}/{_transaction(criteria)}/{property_type}/"
-        f"{_state_code(criteria.state)}/{_city(criteria)}"
-    )
-
-
-def _ancora(criteria: SearchCriteria) -> str:
-    property_type = _selected_type(criteria, _ANCORA_TYPES, default="residencial_comercial")
-    assert property_type is not None
-    return (
-        f"{SITE_BASE_URLS['ancora']}/{_transaction(criteria)}/"
-        f"{property_type}/{_city(criteria)}/"
-    )
-
-
-def _newville(criteria: SearchCriteria) -> str:
-    base = f"{SITE_BASE_URLS['newville']}/imoveis"
-    params: dict[str, str | int | float] = {
-        "negociacao": (
-            "venda" if criteria.transaction.value == "comprar" else "locacao"
-        )
-    }
-    if criteria.city is not None or criteria.location is not None:
-        if criteria.state is not None:
-            params["cidade"] = f"{_city(criteria).replace('-', '+')}--{_state_code(criteria.state)}"
-    for field, key in (
-        ("min_price", "preco_min"),
-        ("max_price", "preco_max"),
-        ("suites", "suites"),
-        ("parking_spaces", "vagas"),
-    ):
-        value = getattr(criteria, field)
-        if value is not None:
-            params[key] = value
-    property_type = _selected_type(criteria, _NEWVILLE_TYPES, default=None)
-    if property_type is not None:
-        params["tipo"] = property_type
-    return _query_url(base, params) if params else base
-
-
-def _djm(criteria: SearchCriteria) -> str:
-    if criteria.transaction.value != "comprar":
-        raise ValueError("A rota pública de aluguel da DJM não foi confirmada.")
-    return f"{SITE_BASE_URLS['djm']}/comprar"
-
-
-def _gvi(criteria: SearchCriteria) -> str:
-    return f"{SITE_BASE_URLS['gvi']}/{_transaction(criteria)}"
-
-
-def _bci(criteria: SearchCriteria) -> str:
-    transaction = "a-venda" if criteria.transaction.value == "comprar" else "para-alugar"
-    return f"{SITE_BASE_URLS['bci']}/imoveis/{transaction}"
-
-
-def _bellolar(site: str, criteria: SearchCriteria) -> str:
-    return _kenlo(site, criteria)
-
-
-_BUILDERS: dict[str, Callable[[SearchCriteria], str]] = {
-    "zap": _zap,
-    "imovelguide": _imovelguide,
-    "imovelweb": _imovelweb,
-    "wimoveis": _wimoveis,
-    "lopes": _lopes,
-    "cti": _cti,
-    "luizaparizi": _luizaparizi,
-    "ancora": _ancora,
-    "newville": _newville,
-    "djm": _djm,
-    "gvi": _gvi,
-    "bci": _bci,
-    "bellolar": lambda criteria: _bellolar("bellolar", criteria),
-    "trueimoveis": lambda criteria: _bellolar("trueimoveis", criteria),
-    "moradasol": lambda criteria: _bellolar("moradasol", criteria),
-    "redeimoveispe": lambda criteria: _bellolar("redeimoveispe", criteria),
-    "fleischman": lambda criteria: _bellolar("fleischman", criteria),
-}
-
-_SUPPORTED_FILTERS = {
-    "zap": {
-        "state", "city", "property_types", "bedrooms", "suites", "bathrooms",
-        "parking_spaces", "min_price", "max_price", "min_area", "max_area",
-    },
-    "imovelguide": {
-        "state", "city", "property_types", "bedrooms", "bathrooms",
-        "parking_spaces", "min_price", "max_price", "min_area", "max_area",
-    },
-    "imovelweb": {
-        "state", "city", "property_types", "bedrooms", "bathrooms", "parking_spaces",
-    },
-    "wimoveis": {"state", "city", "property_types"},
-    "lopes": {"state", "city", "property_types"},
-    "cti": {"city", "property_types"},
-    "luizaparizi": {"state", "city", "property_types"},
-    "ancora": {"city", "property_types"},
-    "newville": {
-        "transaction", "state", "city", "min_price", "max_price", "suites",
-        "parking_spaces", "property_types",
-    },
-    "djm": set(),
-    "gvi": set(),
-    "bci": set(),
-    "bellolar": {"city", "property_types", "bedrooms"},
-    "trueimoveis": {"city", "property_types", "bedrooms"},
-    "moradasol": {"city", "property_types", "bedrooms"},
-    "redeimoveispe": {"city", "property_types", "bedrooms"},
-    "fleischman": {"city", "property_types", "bedrooms"},
-}
-
-_SUPPORTED_TYPES = {
-    "zap": _ZAP_TYPES,
-    "imovelguide": _IMOVELGUIDE_TYPES,
-    "imovelweb": _IMOVELWEB_TYPES,
-    "wimoveis": _IMOVELWEB_TYPES,
-    "lopes": _LOPES_TYPES,
-    "cti": _CTI_TYPES,
-    "luizaparizi": _LUIZAPARIZI_TYPES,
-    "ancora": _ANCORA_TYPES,
-    "newville": _NEWVILLE_TYPES,
-    "djm": {},
-    "gvi": {},
-    "bci": {},
-    "bellolar": _KENLO_TYPES,
-    "trueimoveis": _KENLO_TYPES,
-    "moradasol": _KENLO_TYPES,
-    "redeimoveispe": _KENLO_TYPES,
-    "fleischman": _KENLO_TYPES,
-}
+    if config.get("trailing_slash"):
+        path += "/"
+    path += config.get("extension", "")
+    params = _query(criteria, config)
+    return f"{path}?{urlencode(params)}" if params else path
 
 
 def unsupported_filters(criteria: SearchCriteria, site: str) -> tuple[str, ...]:
     """Retorna filtros informados que não fazem parte do mapeamento desse site."""
-    supported = _SUPPORTED_FILTERS[site]
+    config = _SITES[site]
+    supported = set(config["supported_filters"])
     filters = {
         "transaction": None,
         "state": criteria.state,
@@ -484,24 +267,14 @@ def unsupported_filters(criteria: SearchCriteria, site: str) -> tuple[str, ...]:
         field for field, value in filters.items()
         if value not in (None, (), []) and field not in supported
     ]
-    if site == "newville":
-        has_city = criteria.city is not None or criteria.location is not None
-        if has_city and criteria.state is None:
-            unsupported.append("city")
-        elif criteria.state is not None and not has_city:
-            unsupported.append("state")
+    for group in config.get("together", []):
+        present = [name for name in group if _provided(criteria, name)]
+        if len(present) == 1:
+            unsupported.append(present[0])
     if criteria.property_types and "property_types" in supported:
-        mapped = _SUPPORTED_TYPES[site]
         if (
             len(criteria.property_types) != 1
-            or _slug(criteria.property_types[0]).replace("-", " ") not in mapped
+            or _slug(criteria.property_types[0]).replace("-", " ") not in config["types"]
         ):
             unsupported.append("property_types")
     return tuple(unsupported)
-
-
-def build_site_search_url(criteria: SearchCriteria, site: str) -> str:
-    """Gera URL de pesquisa para um dos sites com mapeamento confirmado."""
-    if site not in _BUILDERS:
-        raise ValueError(f"Site sem mapeamento de busca: '{site}'.")
-    return _BUILDERS[site](criteria)

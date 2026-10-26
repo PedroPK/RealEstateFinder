@@ -23,6 +23,12 @@ Na RE/MAX, os tipos de imóvel e as características são convertidos para os id
 - Newville mapeia finalidade (`negociacao=venda|locacao`), cidade (`cidade=<cidade>--<uf>`), preço mínimo/máximo, suítes, vagas e os tipos com valor confirmado no formulário. A busca pública com `tipo=casa` mudou os resultados, mas a amostra apresentou dois anúncios que não pareciam casas; os filtros de tipo podem herdar essa imprecisão do próprio site. DJM e GVI têm apenas a rota pública de compra/aluguel. BCI oferece rotas de compra/aluguel, mas seus filtros são controlados por JavaScript e parâmetros GET tentados foram ignorados.
 - Os filtros ausentes ou sem comportamento de URL confirmado são omitidos, e a CLI avisa quais foram ignorados. Outros sites da lista permanecem sem conector quando são diretórios/conteúdo, não têm anúncios disponíveis ou expõem filtros somente por interfaces cuja API/semântica não foi confirmada.
 
+### Arquivo de parâmetros do mapeamento (`config/imobiliarias/sites.json`)
+- Define, por site, quais filtros (`supported_filters`) são enviados e como: segmentos de caminho, parâmetros GET (`query`), tipos de imóvel aceitos e valores de transação. O bloco `_ajuda` do arquivo descreve os marcadores e opções.
+- Para ajustar um filtro ou incluir um site, edite o JSON (sem alterar código) e rode os testes. Filtros sem evidência pública devem ficar fora de `supported_filters`.
+- Um arquivo alternativo pode ser usado com a variável de ambiente `REALESTATEFINDER_SITES_CONFIG`. O arquivo é validado ao carregar (campos obrigatórios e nomes de filtros conhecidos).
+- Não há script que descubra os campos automaticamente: o mapeamento atual foi levantado manualmente (inspeção das interfaces/URLs públicas) e registrado neste arquivo; mudanças nos sites exigem nova verificação e edição manual.
+
 ### Descoberta de sites de imobiliárias
 - Busca na web (DuckDuckGo HTML, sem chave de API) por imobiliárias com atuação nacional.
 - Busca opcional por imobiliárias de uma cidade, parametrizável.
@@ -42,7 +48,8 @@ local.sao_paulo.1=https://outra.com.br/
 - `realestatefinder/storage.py`: leitura/escrita do `.properties`.
 - `realestatefinder/models.py`: critérios comuns de busca e tipos de transação.
 - `realestatefinder/connectors/remax.py`: montagem e validação de buscas para a RE/MAX Brasil.
-- `realestatefinder/connectors/sites.py`: construção das URLs e filtros confirmados dos outros sites.
+- `config/imobiliarias/sites.json`: arquivo de parâmetros com o mapeamento de cada site (URL base, rotas, parâmetros GET, tipos e filtros suportados).
+- `realestatefinder/connectors/sites.py`: motor genérico que lê o arquivo acima e gera as URLs; não contém regras específicas de sites.
 - `config/imobiliarias/remax.json`: mapeamento dos parâmetros públicos de busca da RE/MAX.
 - `realestatefinder/__main__.py`: linha de comando.
 - `tests/test_remax.py` e `tests/test_sites.py`: testes dos conectores e critérios.
