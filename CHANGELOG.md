@@ -5,6 +5,10 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
 
 ## [Não lançado]
 
+### Adicionado
+- Opção `--esquema-resposta` na inspeção (esquema de respostas JSON sem valores e tamanhos de listas) e comando `--analisar-inspecao`, que compara as etapas de um relatório e sugere os parâmetros candidatos de cada filtro.
+- Modo opcional `--inspecionar-site` com Playwright para investigar manualmente, site por site, as requisições disparadas pelos filtros. Gera relatórios JSON com metadados de rede sanitizados e etapas identificadas pelo usuário, sem gravar cabeçalhos, cookies ou corpos de resposta.
+
 ### Alterado
 - A RE/MAX foi unificada ao `sites.json` e ao motor genérico, que ganhou parâmetros fixos, texto livre, vários tipos de imóvel e características mapeadas. A RE/MAX agora participa de `--buscar-site todos`. Valores sem mapeamento (por exemplo, características) passaram a ser omitidos com aviso em vez de gerar erro, e `suites` aparece no aviso padrão de filtros ignorados.
 

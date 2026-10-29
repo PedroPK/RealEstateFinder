@@ -55,6 +55,23 @@ def _run() -> None:
         help="Gera URL de busca para um site mapeado (inclusive 'remax'); pode ser repetido ou usar 'todos'",
     )
     parser.add_argument(
+        "--inspecionar-site",
+        help="Abre um site no Playwright para inspecionar filtros manualmente; aceita ID ou URL",
+    )
+    parser.add_argument(
+        "--relatorio-inspecao",
+        help="Caminho do relatório JSON de inspeção (padrão: inspecoes/<site>-<data>.json)",
+    )
+    parser.add_argument(
+        "--esquema-resposta",
+        action="store_true",
+        help="Na inspeção, registra o esquema (nomes e tipos, sem valores) das respostas JSON",
+    )
+    parser.add_argument(
+        "--analisar-inspecao",
+        help="Analisa um relatório de inspeção e sugere parâmetros candidatos por filtro",
+    )
+    parser.add_argument(
         "--localidade",
         help="Cidade, bairro ou termo de busca",
     )
@@ -101,7 +118,58 @@ def _run() -> None:
                         help="Não grava o arquivo de log")
     args = parser.parse_args()
     setup_logging(args.log_nivel, None if args.sem_log_arquivo else args.log_arquivo)
-    logger.info("execução iniciada; argumentos: %s", vars(args))
+    logged_args = vars(args).copy()
+    if args.inspecionar_site:
+        logged_args["inspecionar_site"] = "<informado>"
+    logger.info("execução iniciada; argumentos: %s", logged_args)
+
+    if args.analisar_inspecao:
+        from .inspection_analysis import analyze_report_file
+
+        if args.inspecionar_site or args.buscar_site:
+            parser.error("--analisar-inspecao não pode ser combinado com outras ações")
+        try:
+            print(analyze_report_file(Path(args.analisar_inspecao)))
+        except (OSError, ValueError, KeyError) as exc:
+            parser.error(f"relatório inválido: {exc}")
+        return
+
+    if args.inspecionar_site:
+        search_options = (
+            args.buscar_site,
+            args.cidade,
+            args.localidade,
+            args.estado,
+            args.cidade_imovel,
+            args.preco_minimo,
+            args.preco_maximo,
+            args.area_minima,
+            args.area_maxima,
+            args.quartos,
+            args.suites,
+            args.banheiros,
+            args.vagas,
+            args.tipo_imovel,
+            args.caracteristica,
+        )
+        if any(search_options) or args.revisar_arquivo:
+            parser.error("--inspecionar-site não pode ser combinado com opções de busca")
+        from .site_inspector import inspect_site
+
+        try:
+            report_path = inspect_site(
+                args.inspecionar_site,
+                Path(args.relatorio_inspecao) if args.relatorio_inspecao else None,
+                args.esquema_resposta,
+            )
+        except (RuntimeError, ValueError) as exc:
+            parser.error(str(exc))
+        print(f"Relatório salvo em {report_path}")
+        return
+    if args.relatorio_inspecao:
+        parser.error("--relatorio-inspecao só pode ser usado com --inspecionar-site")
+    if args.esquema_resposta:
+        parser.error("--esquema-resposta só pode ser usado com --inspecionar-site")
 
     if args.buscar_site:
         if args.cidade:

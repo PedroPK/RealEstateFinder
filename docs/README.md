@@ -29,6 +29,24 @@ Na RE/MAX, os tipos de imóvel e as características são convertidos para os id
 - Um arquivo alternativo pode ser usado com a variável de ambiente `REALESTATEFINDER_SITES_CONFIG`. O arquivo é validado ao carregar (campos obrigatórios e nomes de filtros conhecidos).
 - Não há script que descubra os campos automaticamente: o mapeamento atual foi levantado manualmente (inspeção das interfaces/URLs públicas) e registrado neste arquivo; mudanças nos sites exigem nova verificação e edição manual.
 
+### Inspeção site por site com Playwright
+- O modo `--inspecionar-site` abre um único site por execução em um Chromium visível. Informe um ID já mapeado ou uma URL pública, inclusive de um domínio ainda não mapeado.
+- A dependência é opcional. No macOS/Linux, crie um ambiente virtual e instale Playwright/Chromium com:
+
+  ```
+  python3 -m venv .venv
+  .venv/bin/python -m pip install -r requirements-inspecao.txt
+  .venv/bin/python -m playwright install chromium
+  ```
+
+  No Windows, use `.venv\Scripts\python.exe` no lugar de `.venv/bin/python`.
+- Durante a sessão, informe o nome do filtro que vai testar (por exemplo, `quartos=2`), altere esse filtro no navegador e pressione Enter depois que os resultados atualizarem. Repita para cada filtro; Enter sem texto encerra e grava o relatório.
+- O JSON registra método, host, caminho sanitizado, nomes/valores dos parâmetros não sensíveis, campos simples de corpos JSON/form, etapa marcada, status e tipo de conteúdo da resposta. Não captura cabeçalhos completos, cookies, tokens nem corpos de resposta; apenas o `content-type` é mantido. Relatórios padrão ficam em `inspecoes/`, ignorada pelo Git; `--relatorio-inspecao` permite escolher outro caminho.
+- Com `--esquema-resposta`, respostas JSON de XHR/fetch (até 2 MB) também têm o esquema gravado (`response_schema`: nomes e tipos de campos, sem valores) e os tamanhos das listas (`response_list_sizes`), o que ajuda a identificar o endpoint da lista de anúncios, a paginação e se um filtro reduziu os resultados.
+- `--analisar-inspecao RELATORIO.json` compara cada etapa com as anteriores (mesmo endpoint) e lista, por filtro, os parâmetros de query/corpo novos ou alterados e mudanças de caminho, ordenados por probabilidade (valor igual ao informado na etapa e nome parecido). São apenas sugestões.
+- A inspeção é observacional e manual: não seleciona controles automaticamente, não confirma por si só que o filtro afetou os resultados e não contorna autenticação, CAPTCHA, bloqueios ou limites. Compare a carga inicial com cada etapa, valide os resultados visíveis e só então atualize o mapeamento em `sites.json`.
+- Use apenas buscas públicas, não entre em contas e não digite dados pessoais. Respeite os termos e limites de cada site; prefira HTTPS.
+
 ### Descoberta de sites de imobiliárias
 - Busca na web (DuckDuckGo HTML, sem chave de API) por imobiliárias com atuação nacional.
 - Busca opcional por imobiliárias de uma cidade, parametrizável.
@@ -64,6 +82,8 @@ Cada execução gera logs para depuração e diagnóstico:
 - `realestatefinder/models.py`: critérios comuns de busca e tipos de transação.
 - `config/imobiliarias/sites.json`: arquivo de parâmetros com o mapeamento de cada site (URL base, rotas, parâmetros GET, tipos e filtros suportados).
 - `realestatefinder/connectors/sites.py`: motor genérico que lê o arquivo acima e gera as URLs; não contém regras específicas de sites.
+- `realestatefinder/site_inspector.py`: inspeção manual do tráfego de rede com Playwright, com relatórios sanitizados e esquema opcional das respostas.
+- `realestatefinder/inspection_analysis.py`: análise dos relatórios, com parâmetros candidatos por filtro.
 - `realestatefinder/__main__.py`: linha de comando.
 - `tests/test_remax.py` (critérios e RE/MAX via motor unificado), `tests/test_sites.py`, `tests/test_classifier.py` e `tests/test_observability.py`: testes dos conectores, critérios, classificador e logs/métricas.
 
@@ -78,6 +98,10 @@ python3 -m realestatefinder --buscar-site remax --estado Pernambuco --cidade-imo
 python3 -m realestatefinder --buscar-site zap --estado PE --cidade-imovel Recife --tipo-imovel Apartamento --quartos 3 --suites 1 --preco-minimo 300000 --preco-maximo 700000
 python3 -m realestatefinder --buscar-site zap --buscar-site imovelguide --estado PE --cidade-imovel Recife --tipo-imovel Apartamento --banheiros 2
 python3 -m realestatefinder --buscar-site todos --estado PE --cidade-imovel Recife --tipo-imovel Apartamento
+python3 -m realestatefinder --inspecionar-site remax
+python3 -m realestatefinder --inspecionar-site https://exemplo.com.br/busca --relatorio-inspecao inspecoes/exemplo.json
+python3 -m realestatefinder --inspecionar-site remax --esquema-resposta --relatorio-inspecao inspecoes/remax.json
+python3 -m realestatefinder --analisar-inspecao inspecoes/remax.json
 python3 -m realestatefinder --revisar-arquivo
 python3 -m unittest discover -s tests
 ```
@@ -85,6 +109,7 @@ python3 -m unittest discover -s tests
 Opções: `--cidade`, `--arquivo` (padrão `imobiliarias.properties`), `--pular-nacionais`.
 Para a busca (`--buscar-site`), informe pelo menos um entre `--localidade`, `--estado` e `--cidade-imovel`; `--finalidade` aceita `comprar` ou `alugar` (padrão `comprar`). Os filtros numéricos são `--preco-minimo`, `--preco-maximo`, `--area-minima`, `--area-maxima`, `--quartos`, `--suites`, `--banheiros` e `--vagas`. `--tipo-imovel` e `--caracteristica` podem ser repetidos; os valores aceitos são as chaves de `type_sets`/`feature_sets` em `config/imobiliarias/sites.json` (a RE/MAX aceita vários tipos e características; valores sem mapeamento são omitidos com aviso). Nos outros sites, os filtros efetivamente incluídos dependem do mapeamento de cada portal.
 Para outros sites, use `--buscar-site` uma ou mais vezes (ou `todos`), `--estado` e `--cidade-imovel`, além dos filtros comuns. A aplicação gera as URLs para cada site e apresenta avisos sobre filtros omitidos por falta de um mapeamento confirmado.
+Para investigar um novo site, use `--inspecionar-site` uma vez por domínio; as etapas marcadas no navegador ajudam a comparar a carga inicial com cada filtro. A instalação do Playwright é opcional e necessária somente para esse modo.
 
 ## Limitações
 
